@@ -20,7 +20,11 @@ public:
             // sound file channels
             // hardcoded for now
             1,
-            RubberBandStretcher::OptionProcessRealTime | RubberBandStretcher::OptionTransientsCrisp
+            RubberBandStretcher::OptionProcessRealTime
+            // RubberBandStretcher::OptionProcessRealTime |
+            // RubberBandStretcher::OptionThreadingNever |
+            // RubberBandStretcher::OptionTransientsCrisp |
+            // RubberBandStretcher::OptionChannelsTogether
         );
 
         rubberband->setMaxProcessSize(bufferSize());
@@ -39,9 +43,9 @@ public:
         }
 
         RTFree(mWorld, stretchInBufL);
-        RTFree(mWorld, stretchInBufR);
+        // RTFree(mWorld, stretchInBufR);
         RTFree(mWorld, stretchOutBufL);
-        RTFree(mWorld, stretchOutBufR);
+        // RTFree(mWorld, stretchOutBufR);
         // RTFree(mWorld, stretchInBuf);
         // RTFree(mWorld, stretchOutBuf);
     }
@@ -52,17 +56,20 @@ private:
     SndBuf *m_buf;
 
     // state variables
+    const int maxProcessSize = 512;
+    const double minSpeedRatio = 0.000001;
+
     RubberBandStretcher *rubberband = NULL;
     int playheadPos;
 
     // Input buffers for the RubberBandStretcher
     float *stretchInBufL;
-    float *stretchInBufR;
+    // float *stretchInBufR;
     // float *stretchInBuf;
 
     // Output buffers for the RubberBandStretcher
     float *stretchOutBufL;
-    float *stretchOutBufR;
+    // float *stretchOutBufR;
     // float *stretchOutBuf;
 
 
@@ -80,7 +87,7 @@ private:
 
         // const float* numChannels = in(0);
         // const float* bufnum = in(1);
-        double rate = 1.0 / std::max((double)in(1)[0], 0.000001);
+        double rate = 1.0 / std::max((double)in(1)[0], minSpeedRatio);
 
         // via http://doc.sccode.org/Guides/WritingUGens.html
         // “SuperCollider's buffers and busses are global data structures, and access needs
@@ -100,8 +107,6 @@ private:
 
         float* output = out(0);
 
-        int _bufferSize = bufferSize();
-        int maxProcessSize = bufferSize();
         int channels = 1;
 
         rubberband->setTimeRatio(rate);
@@ -114,7 +119,7 @@ private:
             int i, j;
             int channels = 1;
             for (i = 0, j = (playheadPos + i) * channels;
-                   i < inNumSamples && j < bufSamples;
+                   i < maxProcessSize && j < bufSamples;
                    i++, j += channels) {
                stretchInBufL[i] = bufData[j];
                // stretchInBufR[i] = inputSamples[j + 1];
@@ -125,9 +130,9 @@ private:
                i++;
             }
 
-            rubberband->process(&stretchInBufL, inNumSamples, false);
+            rubberband->process(&stretchInBufL, maxProcessSize, false);
 
-            playheadPos += inNumSamples;
+            playheadPos += maxProcessSize;
         }
 
         size_t samplesRetrieved = rubberband->retrieve(&stretchOutBufL, inNumSamples);
@@ -141,27 +146,26 @@ private:
 
     void setupBuffers() {
       RubberBandUGen * unit = this;
-      int bufsize = bufferSize();
       int channels = 1; // hardcoded
 
-      stretchInBufL = (float*)RTAlloc(mWorld, bufsize * sizeof(float));
-      stretchInBufR = (float*)RTAlloc(mWorld, bufsize * sizeof(float));
+      stretchInBufL = (float*)RTAlloc(mWorld, maxProcessSize * sizeof(float));
+      // stretchInBufR = (float*)RTAlloc(mWorld, maxProcessSize * sizeof(float));
       // stretchInBuf = (float*)RTAlloc(mWorld, channels * sizeof(float));
       // stretchInBuf[0] = &(stretchInBufL[0]);
       // stretchInBuf[1] = &(stretchInBufR[0]);
 
-      stretchOutBufL = (float*)RTAlloc(mWorld, bufsize * sizeof(float));
-      stretchOutBufR = (float*)RTAlloc(mWorld, bufsize * sizeof(float));
+      stretchOutBufL = (float*)RTAlloc(mWorld, maxProcessSize * sizeof(float));
+      // stretchOutBufR = (float*)RTAlloc(mWorld, maxProcessSize * sizeof(float));
       // stretchOutBuf = (float*)RTAlloc(mWorld, channels * sizeof(float));
       // stretchOutBuf[0] = &(stretchOutBufL[0]);
       // stretchOutBuf[1] = &(stretchOutBufR[0]);
 
       if (
         stretchInBufL == NULL ||
-        stretchInBufR == NULL ||
+        // stretchInBufR == NULL ||
         // stretchInBuf == NULL ||
-        stretchOutBufL == NULL ||
-        stretchOutBufR == NULL
+        stretchOutBufL == NULL
+        // stretchOutBufR == NULL
         // stretchOutBuf == NULL
       ) {
          SETCALC(ft->fClearUnitOutputs);
@@ -175,10 +179,10 @@ private:
       }
 
       // Fill the buffer with zeros.
-      memset(stretchInBufL, 0, bufsize * sizeof(float));
-      memset(stretchInBufR, 0, bufsize * sizeof(float));
-      memset(stretchOutBufL, 0, bufsize * sizeof(float));
-      memset(stretchOutBufR, 0, bufsize * sizeof(float));
+      memset(stretchInBufL, 0, maxProcessSize * sizeof(float));
+      // memset(stretchInBufR, 0, maxProcessSize * sizeof(float));
+      memset(stretchOutBufL, 0, maxProcessSize * sizeof(float));
+      // memset(stretchOutBufR, 0, maxProcessSize * sizeof(float));
     }
 };
 
