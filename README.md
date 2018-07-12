@@ -1,4 +1,4 @@
-# RubberBand UGen for SuperCollider
+# RubberBand UGens for SuperCollider
 
 RubberBand is a high-quality C++ library for pitch-shifting and time-stretching audio. I want to use it from a plugin in SuperCollider. This code doesn't work yet! But I'm learning!
 
@@ -20,5 +20,4 @@ RubberBand is a high-quality C++ library for pitch-shifting and time-stretching 
 
 ### Reference
 
-RubberBand implementation was mostly just copied from Ben Saylor’s TuneTutor:
-https://github.com/brsaylor/TuneTutor-proto/blob/master/src/timestretcher.cpp
+RubberBand implementation was mostly just copied from [Ben Saylor’s TuneTutor](https://github.com/brsaylor/TuneTutor-proto/blob/57d607bc8e9aeaa8a33db6a8abadfcd0466bd474/src/timestretcher.cpp).
