@@ -15,7 +15,7 @@ Requires a SuperCollider source tree for the plugin headers. The build will try 
     cmake .. -DSC_PATH=/path/to/supercollider
     make
 
-Copy the resulting `RubberBand.scx` and `RubberBand.sc` to your SuperCollider extensions folder (e.g. `~/Library/Application Support/SuperCollider/Extensions/`), then recompile the class library. See [DEVELOPER.md](DEVELOPER.md) for detailed setup, install commands, and rebuild workflows.
+Copy the resulting `RubberBand.scx`, `RubberBand.sc`, and `RubberBandLoop.sc` to your SuperCollider extensions folder (e.g. `~/Library/Application Support/SuperCollider/Extensions/`), then recompile the class library. See [DEVELOPER.md](DEVELOPER.md) for detailed setup, install commands, and rebuild workflows.
 
 ### Quick Example
 
@@ -34,7 +34,7 @@ Copy the resulting `RubberBand.scx` and `RubberBand.sc` to your SuperCollider ex
 
     b.free;
 
-A more complete example with an interactive GUI (speed slider, pitch slider, loop toggle, formant control, and drag-and-drop file loading) is included in `RubberBand.scd`.
+A more complete example with an interactive GUI (speed slider, pitch slider, loop toggle, formant control, and drag-and-drop file loading) is included in `RubberBand.scd`. There is also a BPM-synced loop GUI demo (`RubberBandLoop` helper class) that lets you load a drum loop, set its original BPM, and play it back at a different target BPM with an optional metronome click.
 
 ### Parameters
 
