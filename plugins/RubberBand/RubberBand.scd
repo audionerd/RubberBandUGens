@@ -218,12 +218,19 @@ s.waitForBoot {
 
 
 // ---- Section 10: Interactive GUI ----
-// Speed slider, pitch slider, loop toggle, file drop, and play button.
+// Speed slider, pitch slider, loop toggle, formant toggle, advanced options,
+// file drop, and play button. Construction-only options (engine, window,
+// channelMode) recreate the synth when changed; R2-only RT options
+// (transients, detector, phase, pitchMode) update live via .set().
 
 (
 var win, dropArea, speedSlider, pitchSlider, speedReadout, pitchReadout;
 var playBtn, loopToggle, formantToggle, synth;
+var engineMenu, pitchModeMenu, transientsMenu, detectorMenu, phaseMenu;
+var windowMenu, channelMenu;
 var currentRate = 1.0, currentPitch = 1.0, loopOn = 0, formantOn = 0;
+var currentEngine = 0, currentWindow = 0, currentChannelMode = 0;
+var currentTransients = 0, currentDetector = 0, currentPhase = 0, currentPitchMode = 0;
 
 var startSynth = {
 	if (synth.notNil) { synth.free; synth = nil };
@@ -233,6 +240,13 @@ var startSynth = {
 			pitchShift: \pitch.kr(currentPitch),
 			loop: \loop.kr(loopOn),
 			formant: \formant.kr(formantOn),
+			transients: \transients.kr(currentTransients),
+			detector: \detector.kr(currentDetector),
+			phase: \phase.kr(currentPhase),
+			pitchMode: \pitchMode.kr(currentPitchMode),
+			engine: currentEngine,       // ctor-only (baked in)
+			window: currentWindow,       // ctor-only
+			channelMode: currentChannelMode, // ctor-only
 			doneAction: 2
 		).dup;
 	}.play;
@@ -241,7 +255,9 @@ var startSynth = {
 var updateControls = {
 	if (synth.notNil) {
 		synth.set(\rate, currentRate, \pitch, currentPitch,
-			\loop, loopOn, \formant, formantOn);
+			\loop, loopOn, \formant, formantOn,
+			\transients, currentTransients, \detector, currentDetector,
+			\phase, currentPhase, \pitchMode, currentPitchMode);
 	};
 };
 
@@ -263,21 +279,29 @@ var loadFile = { |path|
 // --- Build the window ---
 
 win = Window("RubberBand Time Stretch + Pitch Shift",
-	Rect(200, 200, 500, 260), resizable: false);
+	Rect(200, 200, 540, 380), resizable: false);
 
 win.layout = VLayout(
-	// Drop zone
-	dropArea = DragSink()
-		.string_("  " ++ (~path ? "Drop an audio file here").basename)
-		.align_(\left)
-		.minHeight_(32)
-		.background_(Color.grey(0.85))
-		.canReceiveDragHandler_({
-			View.currentDrag.isString and: { PathName(View.currentDrag).isFile }
-		})
-		.receiveDragHandler_({ |v|
-			loadFile.value(View.currentDrag);
-		}),
+	// Drop zone + Browse button
+	HLayout(
+		dropArea = DragSink()
+			.string_("  " ++ (~path ? "Drop an audio file here").basename)
+			.align_(\left)
+			.minHeight_(32)
+			.background_(Color.grey(0.85))
+			.canReceiveDragHandler_({
+				View.currentDrag.isString and: { PathName(View.currentDrag).isFile }
+			})
+			.receiveDragHandler_({ |v|
+				loadFile.value(View.currentDrag);
+			}),
+		Button().states_([["Browse...", Color.black, Color.grey(0.85)]])
+			.fixedWidth_(70)
+			.action_({
+				var startDir = if (~path.notNil) { PathName(~path).pathOnly } { nil };
+				Dialog.openPanel({ |path| loadFile.value(path) }, nil, false, startDir);
+			})
+	),
 
 	// Speed slider (1% to 300%)
 	HLayout(
@@ -330,6 +354,78 @@ win.layout = VLayout(
 			])
 			.action_({ |btn|
 				formantOn = btn.value;
+				updateControls.value;
+			})
+	),
+
+	// --- Advanced options ---
+	StaticText().string_("Advanced Options")
+		.align_(\left)
+		.font_(Font.default.bold),
+
+	// Construction-only row (changes recreate the synth)
+	HLayout(
+		StaticText().string_("Engine:").fixedWidth_(50),
+		engineMenu = PopUpMenu()
+			.items_(["R2 (Faster)", "R3 (Finer)"])
+			.value_(0)
+			.action_({ |m|
+				currentEngine = m.value;
+				startSynth.value; // ctor-only: must recreate
+			}),
+		StaticText().string_("Window:").fixedWidth_(55),
+		windowMenu = PopUpMenu()
+			.items_(["Standard", "Short", "Long"])
+			.value_(0)
+			.action_({ |m|
+				currentWindow = m.value;
+				startSynth.value;
+			}),
+		StaticText().string_("Channels:").fixedWidth_(60),
+		channelMenu = PopUpMenu()
+			.items_(["Apart", "Together"])
+			.value_(0)
+			.action_({ |m|
+				currentChannelMode = m.value;
+				startSynth.value;
+			})
+	),
+
+	// Runtime options row (R2 only; on R3 these are ignored at runtime)
+	HLayout(
+		StaticText().string_("Pitch:").fixedWidth_(38),
+		pitchModeMenu = PopUpMenu()
+			.items_(["HighSpeed", "HighQuality", "HighConsistency"])
+			.value_(0)
+			.action_({ |m|
+				currentPitchMode = m.value;
+				updateControls.value;
+			}),
+		StaticText().string_("Trans:").fixedWidth_(40),
+		transientsMenu = PopUpMenu()
+			.items_(["Crisp", "Mixed", "Smooth"])
+			.value_(0)
+			.action_({ |m|
+				currentTransients = m.value;
+				updateControls.value;
+			})
+	),
+
+	HLayout(
+		StaticText().string_("Detect:").fixedWidth_(46),
+		detectorMenu = PopUpMenu()
+			.items_(["Compound", "Percussive", "Soft"])
+			.value_(0)
+			.action_({ |m|
+				currentDetector = m.value;
+				updateControls.value;
+			}),
+		StaticText().string_("Phase:").fixedWidth_(42),
+		phaseMenu = PopUpMenu()
+			.items_(["Laminar", "Independent"])
+			.value_(0)
+			.action_({ |m|
+				currentPhase = m.value;
 				updateControls.value;
 			})
 	),
@@ -401,20 +497,49 @@ win.front;
 
 
 // ---- Section 13: BPM-synced loop GUI ----
-// RubberBandLoop: original BPM, target BPM (40–200), metronome, drop zone.
-// Load a loop (e.g. a drum loop), set its original BPM, then play at a new BPM
-// with optional click. Requires RubberBandLoop.sc to be in your class library.
+// RubberBandLoop: original BPM, target BPM (40–200), metronome, drop zone,
+// plus advanced Rubber Band options. Construction-only options (engine, window,
+// channelMode) are baked into the SynthDef on each Play; RT options
+// (formant, transients, detector, phase, pitchMode) update live via .set().
+// Requires RubberBandLoop.sc to be in your class library.
 // If click/loop phase feels slightly off, try:
 // loopPlayer.metronomeOffset = 0.03;  // or 0.06, etc., then press Stop and Play again
 
 (
 var win, dropArea, origBPMBox, targetSlider, targetReadout;
 var metronomeToggle, playBtn, stopBtn;
+var engineMenu, pitchModeMenu, transientsMenu, detectorMenu, phaseMenu;
+var windowMenu, channelMenu, formantToggle;
 var loopPlayer, bpmBuf, bpmPath;
 var targetBPM = 120, originalBPM = 120;
+var curEngine = 0, curWindow = 0, curChannelMode = 0;
+var curFormant = 0, curTransients = 0, curDetector = 0, curPhase = 0, curPitchMode = 0;
 // Default browse folder: same as this SCD file, or last-loaded file's folder
 var scdDir = thisProcess.nowExecutingPath.notNil.if(
 	PathName(thisProcess.nowExecutingPath).pathOnly, nil);
+
+// Rebuild \rbLoop_player SynthDef with current ctor-only values as defaults,
+// then call completionFunc when it's ready on the server.
+var loadPlayerDef = { |completionFunc|
+	var eng = curEngine, wnd = curWindow, chm = curChannelMode;
+	SynthDef(\rbLoop_player, { |bufnum, rate = 1, formant = 0,
+		transients = 0, detector = 0, phase = 0, pitchMode = 0|
+		var sig = RubberBand.ar(1, bufnum, rate: rate, loop: 1,
+			formant: formant, transients: transients, detector: detector,
+			phase: phase, pitchMode: pitchMode,
+			engine: eng, window: wnd, channelMode: chm);
+		Out.ar(0, sig.dup);
+	}).load(s, completionFunc);
+};
+
+var setRTOptions = {
+	if (loopPlayer.notNil and: { loopPlayer.synth.notNil }) {
+		loopPlayer.synth.set(
+			\formant, curFormant, \transients, curTransients,
+			\detector, curDetector, \phase, curPhase,
+			\pitchMode, curPitchMode);
+	};
+};
 
 var loadBPMFile = { |path|
 	Buffer.read(s, path, action: { |buf|
@@ -429,8 +554,7 @@ var loadBPMFile = { |path|
 };
 
 s.waitForBoot {
-	// Open window immediately so it's visible even if SynthDef load is slow or fails
-	win = Window("BPM-synced loop", Rect(220, 220, 420, 220), resizable: false);
+	win = Window("BPM-synced loop", Rect(220, 220, 500, 370), resizable: false);
 	win.layout = VLayout(
 		HLayout(
 			StaticText().string_("Drop loop file:").fixedWidth_(90),
@@ -464,6 +588,62 @@ s.waitForBoot {
 					if (loopPlayer.notNil) { loopPlayer.targetBPM_(targetBPM) };
 				})
 		),
+
+		// --- Advanced options ---
+		StaticText().string_("Advanced Options").align_(\left).font_(Font.default.bold),
+
+		// Construction-only (take effect on next Play)
+		HLayout(
+			StaticText().string_("Engine:").fixedWidth_(50),
+			engineMenu = PopUpMenu()
+				.items_(["R2 (Faster)", "R3 (Finer)"])
+				.value_(0)
+				.action_({ |m| curEngine = m.value }),
+			StaticText().string_("Window:").fixedWidth_(55),
+			windowMenu = PopUpMenu()
+				.items_(["Standard", "Short", "Long"])
+				.value_(0)
+				.action_({ |m| curWindow = m.value }),
+			StaticText().string_("Ch:").fixedWidth_(22),
+			channelMenu = PopUpMenu()
+				.items_(["Apart", "Together"])
+				.value_(0)
+				.action_({ |m| curChannelMode = m.value })
+		),
+
+		// Runtime options (R2 only; update live)
+		HLayout(
+			formantToggle = Button()
+				.states_([
+					["Formant: OFF", Color.black, Color.grey(0.8)],
+					["Formant: ON",  Color.white, Color(0.65, 0.45, 0.70)]
+				])
+				.action_({ |btn| curFormant = btn.value; setRTOptions.value }),
+			StaticText().string_("Pitch:").fixedWidth_(38),
+			pitchModeMenu = PopUpMenu()
+				.items_(["HighSpeed", "HighQuality", "HighConsistency"])
+				.value_(0)
+				.action_({ |m| curPitchMode = m.value; setRTOptions.value })
+		),
+
+		HLayout(
+			StaticText().string_("Trans:").fixedWidth_(40),
+			transientsMenu = PopUpMenu()
+				.items_(["Crisp", "Mixed", "Smooth"])
+				.value_(0)
+				.action_({ |m| curTransients = m.value; setRTOptions.value }),
+			StaticText().string_("Detect:").fixedWidth_(46),
+			detectorMenu = PopUpMenu()
+				.items_(["Compound", "Percussive", "Soft"])
+				.value_(0)
+				.action_({ |m| curDetector = m.value; setRTOptions.value }),
+			StaticText().string_("Phase:").fixedWidth_(42),
+			phaseMenu = PopUpMenu()
+				.items_(["Laminar", "Independent"])
+				.value_(0)
+				.action_({ |m| curPhase = m.value; setRTOptions.value })
+		),
+
 		HLayout(
 			metronomeToggle = Button()
 				.states_([
@@ -479,10 +659,16 @@ s.waitForBoot {
 				.minHeight_(32)
 				.action_({
 					if (bpmBuf.isNil) { "Load a loop file first.".postln; ^nil };
-					// Stop previous player to avoid orphaned synths
 					if (loopPlayer.notNil) { loopPlayer.stop };
-					loopPlayer = RubberBandLoop.new(bpmBuf, origBPMBox.value, nil);
-					loopPlayer.play(targetBPM, metronome: metronomeToggle.value == 1);
+					// Rebuild SynthDef with current ctor-only values, then start
+					loadPlayerDef.value({
+						{
+							loopPlayer = RubberBandLoop.new(bpmBuf, origBPMBox.value, nil);
+							loopPlayer.play(targetBPM, metronome: metronomeToggle.value == 1);
+							// Apply current RT options to the new synth
+							setRTOptions.value;
+						}.defer;
+					});
 				}),
 			stopBtn = Button()
 				.states_([["Stop", Color.white, Color(0.65, 0.30, 0.30)]])
@@ -498,10 +684,7 @@ s.waitForBoot {
 	win.front;
 
 	// Pre-load SynthDefs (chained so both are on the server before "ready" prints)
-	SynthDef(\rbLoop_player, { |bufnum, rate = 1|
-		var sig = RubberBand.ar(1, bufnum, rate: rate, loop: 1);
-		Out.ar(0, sig.dup);
-	}).load(s, {
+	loadPlayerDef.value({
 		SynthDef(\rbLoop_metronome, { |freq = 1000, amp = 0.3|
 			var sig = SinOsc.ar(freq) * EnvGen.ar(Env.perc(0.001, 0.05), doneAction: 2);
 			Out.ar(0, sig ! 2 * amp);
