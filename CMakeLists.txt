@@ -39,6 +39,9 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
         add_link_options(-stdlib=libc++)
     endif()
 endif()
+if(WIN32)
+    add_definitions(-DNOMINMAX)
+endif()
 
 # --- Include paths ---
 include_directories(
