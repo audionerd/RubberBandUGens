@@ -28,22 +28,16 @@ public:
 
         setupBuffers();
 
-        // Prime the stretcher with silence to handle start delay
+        // Prime the stretcher with silence to handle start delay.
+        // Feed in chunks of maxProcessSize to stay within the API contract.
         size_t startPad = rubberband->getPreferredStartPad();
         if (startPad > 0) {
-            float *padBuf = (float *)RTAlloc(mWorld, startPad * sizeof(float));
-            if (padBuf) {
-                memset(padBuf, 0, startPad * sizeof(float));
-                // Build a channel pointer array pointing to the same silent buffer
-                const float **padChannels = (const float **)RTAlloc(mWorld, numChannels * sizeof(float *));
-                if (padChannels) {
-                    for (int ch = 0; ch < numChannels; ch++) {
-                        padChannels[ch] = padBuf;
-                    }
-                    rubberband->process(padChannels, startPad, false);
-                    RTFree(mWorld, padChannels);
-                }
-                RTFree(mWorld, padBuf);
+            // Reuse stretchInBuf (already zeroed) as silent input
+            size_t remaining = startPad;
+            while (remaining > 0) {
+                size_t chunk = std::min(remaining, (size_t)maxProcessSize);
+                rubberband->process((const float *const *)stretchInBuf, chunk, false);
+                remaining -= chunk;
             }
         }
 
@@ -137,9 +131,10 @@ private:
         // Retrieve output -- skip startDelay samples at the beginning
         int avail = rubberband->available();
 
-        // If we still need to skip delay samples, do so first
+        // If we still need to skip delay samples, do so first.
+        // Clamp to maxProcessSize since that's our buffer allocation.
         while (startDelay > 0 && avail > 0) {
-            size_t toSkip = std::min((size_t)avail, startDelay);
+            size_t toSkip = std::min({(size_t)avail, startDelay, (size_t)maxProcessSize});
             rubberband->retrieve(stretchOutBuf, toSkip);
             startDelay -= toSkip;
             avail = rubberband->available();
