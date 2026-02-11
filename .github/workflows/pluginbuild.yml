@@ -75,5 +75,5 @@ jobs:
         repo_token: ${{ secrets.GITHUB_TOKEN }}
         file: ${{ env.INSTALL_PATH }}/${{ env.ARCHIVE_NAME }}
         prerelease: true
-        body: ""
+        generate_release_notes: true
         tag: ${{ github.ref }}
