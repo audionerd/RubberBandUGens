@@ -31,12 +31,9 @@ public:
         int formant = (int)in(kFormant)[0];
 
         // Build constructor options.
-        // OptionPitchHighConsistency supports time-varying pitch without
-        // discontinuities — correct choice for a modulatable UGen.
         int options =
             RubberBandStretcher::OptionProcessRealTime |
-            RubberBandStretcher::OptionThreadingNever |
-            RubberBandStretcher::OptionPitchHighConsistency;
+            RubberBandStretcher::OptionThreadingNever;
 
         if (formant)
             options |= RubberBandStretcher::OptionFormantPreserved;
@@ -47,11 +44,13 @@ public:
             options
         );
 
-        rubberband->setTimeRatio(1.0 / rate);
-        rubberband->setPitchScale(pitchScale);
-
+        // setMaxProcessSize MUST be called before setTimeRatio / setPitchScale
+        // and before the first process() call.
         setupBuffers();
         if (allocFailed) return;
+
+        rubberband->setTimeRatio(1.0 / rate);
+        rubberband->setPitchScale(pitchScale);
 
         primeStretcher();
 
@@ -61,8 +60,8 @@ public:
         playbackDone = false;
         samplesOutput = 0;
 
+        // set_calc_function sets the calc function AND calls next(1) internally.
         set_calc_function<RubberBandUGen, &RubberBandUGen::next>();
-        next(1);
     }
 
     ~RubberBandUGen() {
@@ -85,9 +84,10 @@ public:
     }
 
 private:
-    // Required by GET_BUF macro
-    float m_fbufnum;
-    SndBuf *m_buf;
+    // Required by GET_BUF macro (init m_fbufnum to -1 so first GET_BUF
+    // always does the full buffer lookup instead of using uninitialized m_buf)
+    float m_fbufnum = -1.f;
+    SndBuf *m_buf = nullptr;
 
     // Constants
     const int maxProcessSize = 512;
