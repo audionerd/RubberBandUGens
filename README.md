@@ -11,23 +11,26 @@ Requires a SuperCollider source tree for the plugin headers. The build will try 
     cmake .. -DSC_PATH=/path/to/supercollider
     make
 
-Copy the resulting `RubberBand.scx` and `RubberBand.sc` to your SuperCollider extensions folder (e.g. `~/Library/Application Support/SuperCollider/Extensions/`), then recompile the class library.
+Copy the resulting `RubberBand.scx` and `RubberBand.sc` to your SuperCollider extensions folder (e.g. `~/Library/Application Support/SuperCollider/Extensions/`), then recompile the class library. See [DEVELOPER.md](DEVELOPER.md) for detailed setup, install commands, and rebuild workflows.
 
-### Example
+### Quick Example
 
     s.boot;
 
     b = Buffer.read(s, Platform.resourceDir +/+ "sounds/a11wlk01-44_1.aiff");
 
+    // Play at quarter speed — pitch is preserved
     {
       RubberBand.ar(
-        numChannels: b.numChannels,
-        bufnum: b.bufnum,
+        numChannels: 1,
+        bufnum: b,
         rate: 0.25
       ).dup;
     }.play;
 
     b.free;
+
+A more complete example with an interactive BPM slider and drag-and-drop file loading is included in `RubberBand.scd`.
 
 ### Reference
 
