@@ -31,9 +31,12 @@ public:
         int formant = (int)in(kFormant)[0];
 
         // Build constructor options.
+        // OptionPitchHighConsistency is required for smooth, glitch-free
+        // time-varying pitch shifts (e.g. LFO or mouse modulation).
         int options =
             RubberBandStretcher::OptionProcessRealTime |
-            RubberBandStretcher::OptionThreadingNever;
+            RubberBandStretcher::OptionThreadingNever |
+            RubberBandStretcher::OptionPitchHighConsistency;
 
         if (formant)
             options |= RubberBandStretcher::OptionFormantPreserved;
@@ -90,7 +93,7 @@ private:
     SndBuf *m_buf = nullptr;
 
     // Constants
-    const int maxProcessSize = 512;
+    const int maxProcessSize = 8192;
     const double minSpeedRatio = 0.000001;
     const double minPitchScale = 0.0625;  // ~4 octaves down
     const double maxPitchScale = 16.0;    // ~4 octaves up
