@@ -232,24 +232,38 @@ var currentRate = 1.0, currentPitch = 1.0, loopOn = 0, formantOn = 0;
 var currentEngine = 0, currentWindow = 0, currentChannelMode = 0;
 var currentTransients = 0, currentDetector = 0, currentPhase = 0, currentPitchMode = 0;
 
+// Rebuild the SynthDef with current ctor-only values baked in, then call completionFunc.
+// This avoids Function.play's SynthDef caching, which would silently ignore
+// changes to engine/window/channelMode.
+var loadPlayerDef = { |completionFunc|
+	var eng = currentEngine, wnd = currentWindow, chm = currentChannelMode;
+	SynthDef(\rb_gui_player, { |bufnum, rate = 1, pitch = 1, loop = 0,
+		formant = 0, transients = 0, detector = 0, phase = 0, pitchMode = 0,
+		doneAction = 0|
+		var sig = RubberBand.ar(1, bufnum,
+			rate: rate, pitchShift: pitch, loop: loop,
+			formant: formant, transients: transients, detector: detector,
+			phase: phase, pitchMode: pitchMode,
+			engine: eng, window: wnd, channelMode: chm,
+			doneAction: doneAction);
+		Out.ar(0, sig.dup);
+	}).load(s, completionFunc);
+};
+
 var startSynth = {
 	if (synth.notNil) { synth.free; synth = nil };
-	synth = {
-		RubberBand.ar(1, ~buf.bufnum,
-			rate: \rate.kr(currentRate),
-			pitchShift: \pitch.kr(currentPitch),
-			loop: \loop.kr(loopOn),
-			formant: \formant.kr(formantOn),
-			transients: \transients.kr(currentTransients),
-			detector: \detector.kr(currentDetector),
-			phase: \phase.kr(currentPhase),
-			pitchMode: \pitchMode.kr(currentPitchMode),
-			engine: currentEngine,       // ctor-only (baked in)
-			window: currentWindow,       // ctor-only
-			channelMode: currentChannelMode, // ctor-only
-			doneAction: 2
-		).dup;
-	}.play;
+	loadPlayerDef.value({
+		{
+			synth = Synth(\rb_gui_player, [
+				\bufnum, ~buf.bufnum,
+				\rate, currentRate, \pitch, currentPitch,
+				\loop, loopOn, \formant, formantOn,
+				\transients, currentTransients, \detector, currentDetector,
+				\phase, currentPhase, \pitchMode, currentPitchMode,
+				\doneAction, 2
+			]);
+		}.defer;
+	});
 };
 
 var updateControls = {
