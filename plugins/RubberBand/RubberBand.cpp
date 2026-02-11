@@ -17,7 +17,14 @@ enum {
     kStartPos,      // start position in frames (reset target for trig)
     kLoop,          // loop mode (0 = off, 1 = on)
     kDoneAction,    // done action when buffer playback finishes (non-loop)
-    kFormant        // formant preservation (0 = shifted, 1 = preserved)
+    kFormant,       // formant preservation (0 = shifted, 1 = preserved)
+    kTransients,    // transient mode (0 = crisp, 1 = mixed, 2 = smooth) [R2 only, RT]
+    kDetector,      // detector mode (0 = compound, 1 = percussive, 2 = soft) [R2 only, RT]
+    kPhase,         // phase mode (0 = laminar, 1 = independent) [R2 only, RT]
+    kPitchMode,     // pitch mode (0 = high speed, 1 = high quality, 2 = high consistency) [R2 RT, R3 ctor]
+    kEngine,        // engine (0 = Faster/R2, 1 = Finer/R3) [ctor only]
+    kWindow,        // window (0 = standard, 1 = short, 2 = long) [ctor only]
+    kChannelMode    // channel mode (0 = apart, 1 = together) [ctor only]
 };
 
 struct RubberBandUGen : public SCUnit {
@@ -29,23 +36,67 @@ public:
         double rate = std::max((double)in(kRate)[0], minSpeedRatio);
         double pitchScale = clampPitch((double)in(kPitchShift)[0]);
         int formant = (int)in(kFormant)[0];
+        int transients = (int)in(kTransients)[0];
+        int detector = (int)in(kDetector)[0];
+        int phase = (int)in(kPhase)[0];
+        int pitchMode = (int)in(kPitchMode)[0];
+        int engine = (int)in(kEngine)[0];
+        int window = (int)in(kWindow)[0];
+        int channelMode = (int)in(kChannelMode)[0];
 
-        // Build constructor options.
-        // OptionPitchHighConsistency is required for smooth, glitch-free
-        // time-varying pitch shifts (e.g. LFO or mouse modulation).
+        // Build constructor options bitmask.
         int options =
             RubberBandStretcher::OptionProcessRealTime |
-            RubberBandStretcher::OptionThreadingNever |
-            RubberBandStretcher::OptionPitchHighConsistency;
+            RubberBandStretcher::OptionThreadingNever;
+
+        // Engine: 0 = Faster/R2, 1 = Finer/R3
+        if (engine == 1)
+            options |= RubberBandStretcher::OptionEngineFiner;
+
+        // Window: 0 = standard, 1 = short, 2 = long
+        if (window == 1)
+            options |= RubberBandStretcher::OptionWindowShort;
+        else if (window == 2)
+            options |= RubberBandStretcher::OptionWindowLong;
+
+        // Channel mode: 0 = apart, 1 = together
+        if (channelMode == 1)
+            options |= RubberBandStretcher::OptionChannelsTogether;
+
+        // Pitch mode: 0 = HighSpeed, 1 = HighQuality, 2 = HighConsistency
+        // For R3 this is construction-only; for R2 it can be changed at runtime.
+        if (pitchMode == 1)
+            options |= RubberBandStretcher::OptionPitchHighQuality;
+        else if (pitchMode == 2)
+            options |= RubberBandStretcher::OptionPitchHighConsistency;
 
         if (formant)
             options |= RubberBandStretcher::OptionFormantPreserved;
+
+        // Transients (R2 construction default)
+        if (transients == 1)
+            options |= RubberBandStretcher::OptionTransientsMixed;
+        else if (transients == 2)
+            options |= RubberBandStretcher::OptionTransientsSmooth;
+
+        // Detector (R2 construction default)
+        if (detector == 1)
+            options |= RubberBandStretcher::OptionDetectorPercussive;
+        else if (detector == 2)
+            options |= RubberBandStretcher::OptionDetectorSoft;
+
+        // Phase (R2 construction default)
+        if (phase == 1)
+            options |= RubberBandStretcher::OptionPhaseIndependent;
 
         rubberband = new RubberBandStretcher(
             sampleRate(),
             numChannels,
             options
         );
+
+        // Store engine version to gate R2-only runtime calls
+        engineVersion = rubberband->getEngineVersion();
 
         // setMaxProcessSize MUST be called before setTimeRatio / setPitchScale
         // and before the first process() call.
@@ -60,6 +111,10 @@ public:
         playheadPos = (int)in(kStartPos)[0];
         prevTrig = in(kTrig)[0];
         prevFormant = formant;
+        prevTransients = transients;
+        prevDetector = detector;
+        prevPhase = phase;
+        prevPitchMode = pitchMode;
         playbackDone = false;
         samplesOutput = 0;
 
@@ -101,11 +156,16 @@ private:
     // State
     RubberBandStretcher *rubberband = NULL;
     int numChannels;
+    int engineVersion;
     int playheadPos;
     size_t startDelay;
     size_t samplesOutput;
     float prevTrig;
     int prevFormant;
+    int prevTransients;
+    int prevDetector;
+    int prevPhase;
+    int prevPitchMode;
     bool playbackDone;
     bool allocFailed = false;
 
@@ -172,6 +232,55 @@ private:
                     : RubberBandStretcher::OptionFormantShifted
             );
             prevFormant = formant;
+        }
+
+        // --- Update R2-only runtime options if changed ---
+        if (engineVersion == 2) {
+            int transients = (int)in(kTransients)[0];
+            if (transients != prevTransients) {
+                static const RubberBandStretcher::Option transientOpts[] = {
+                    RubberBandStretcher::OptionTransientsCrisp,
+                    RubberBandStretcher::OptionTransientsMixed,
+                    RubberBandStretcher::OptionTransientsSmooth
+                };
+                if (transients >= 0 && transients <= 2)
+                    rubberband->setTransientsOption(transientOpts[transients]);
+                prevTransients = transients;
+            }
+
+            int detector = (int)in(kDetector)[0];
+            if (detector != prevDetector) {
+                static const RubberBandStretcher::Option detectorOpts[] = {
+                    RubberBandStretcher::OptionDetectorCompound,
+                    RubberBandStretcher::OptionDetectorPercussive,
+                    RubberBandStretcher::OptionDetectorSoft
+                };
+                if (detector >= 0 && detector <= 2)
+                    rubberband->setDetectorOption(detectorOpts[detector]);
+                prevDetector = detector;
+            }
+
+            int phase = (int)in(kPhase)[0];
+            if (phase != prevPhase) {
+                rubberband->setPhaseOption(
+                    phase == 1
+                        ? RubberBandStretcher::OptionPhaseIndependent
+                        : RubberBandStretcher::OptionPhaseLaminar
+                );
+                prevPhase = phase;
+            }
+
+            int pitchMode = (int)in(kPitchMode)[0];
+            if (pitchMode != prevPitchMode) {
+                static const RubberBandStretcher::Option pitchOpts[] = {
+                    RubberBandStretcher::OptionPitchHighSpeed,
+                    RubberBandStretcher::OptionPitchHighQuality,
+                    RubberBandStretcher::OptionPitchHighConsistency
+                };
+                if (pitchMode >= 0 && pitchMode <= 2)
+                    rubberband->setPitchOption(pitchOpts[pitchMode]);
+                prevPitchMode = pitchMode;
+            }
         }
 
         // --- Set time ratio and pitch scale ---
