@@ -19,8 +19,7 @@ If you already cloned without `--recursive`:
 
 If you don't have a SuperCollider source tree, clone one into the project folder:
 
-    git clone --no-checkout https://github.com/supercollider/supercollider.git
-    cd supercollider && git checkout 11825de53 && cd ..
+    git clone --depth 1 https://github.com/supercollider/supercollider.git
 
 ## Build
 
