@@ -157,7 +157,35 @@ win.front;
 )
 
 
-// ---- Section 6: Cleanup ----
+// ---- Section 6: Vinyl Stop / Start ----
+// Compare RubberBand (pitch stays) with PlayBuf (pitch drops
+// with speed, like real vinyl). XLine gives a natural-feeling
+// deceleration curve. RubberBand examples use 0.1 as the
+// floor — lower values (e.g. 0.01) cause extreme CPU load
+// because the library must stretch audio 100x in real time.
+
+// Classic vinyl stop — pitch drops as it slows (PlayBuf)
+{ PlayBuf.ar(1, ~buf, XLine.kr(1.0, 0.01, 1.5), doneAction: 2).dup }.play;
+
+// Variation: plays at normal speed for 1 second, then stops
+(
+{
+	var rate = EnvGen.kr(Env([1.0, 1.0, 0.01], [1, 1.5], [0, -6]));
+	PlayBuf.ar(1, ~buf, rate, doneAction: 2).dup;
+}.play;
+)
+
+// Pitch-locked stop — slows down but pitch stays put (RubberBand)
+{ RubberBand.ar(1, ~buf, XLine.kr(1.0, 0.1, 1.5)).dup }.play;
+
+// Classic vinyl start — pitch rises as it spins up (PlayBuf)
+{ PlayBuf.ar(1, ~buf, XLine.kr(0.01, 1.0, 1.5), doneAction: 2).dup }.play;
+
+// Pitch-locked start — speeds up but pitch stays put (RubberBand)
+{ RubberBand.ar(1, ~buf, XLine.kr(0.1, 1.0, 1.5)).dup }.play;
+
+
+// ---- Section 7: Cleanup ----
 
 s.freeAll;
 ~buf.free;
