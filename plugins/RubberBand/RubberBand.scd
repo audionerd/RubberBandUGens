@@ -39,6 +39,9 @@ s.waitForBoot {
 // 1.5x speed
 { RubberBand.ar(1, ~buf, rate: 1.5).dup }.play;
 
+// Mouse scrubbing — move left=slow, right=fast
+{ RubberBand.ar(1, ~buf, MouseX.kr(0.1, 2.0, 1)).dup }.play;
+
 // Cmd+. to stop each one before trying the next.
 
 
