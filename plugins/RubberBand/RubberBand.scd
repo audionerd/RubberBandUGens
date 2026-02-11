@@ -28,14 +28,14 @@ s.waitForBoot {
 // ---- Section 2: Basic Stretching ----
 // Pitch is preserved at all rates.
 
+// Original speed (sanity check)
+{ RubberBand.ar(1, ~buf, rate: 1.0).dup }.play;
+
 // Half speed (2x longer)
-{ RubberBand.ar(1, ~buf, rate: 0.5).dup }.play;
+{ RubberBand.ar(1, ~buf, rate: 0.1).dup }.play;
 
 // 75% speed
 { RubberBand.ar(1, ~buf, rate: 0.75).dup }.play;
-
-// Original speed (sanity check)
-{ RubberBand.ar(1, ~buf, rate: 1.0).dup }.play;
 
 // 1.5x speed
 { RubberBand.ar(1, ~buf, rate: 1.5).dup }.play;
@@ -57,15 +57,42 @@ s.waitForBoot {
 // Evaluate this block to open the beatmatch control window.
 
 (
-var win, dropArea, bpmLabel, srcBpmBox, slider, bpmReadout, synth;
+var win, dropArea, bpmLabel, srcBpmBox, slider, bpmReadout, playBtn, synth;
 var originalBPM = ~originalBPM ? 120;
 var currentTargetBPM = originalBPM;
+var isPlaying = false;
+
+var updatePlayBtn = {
+	playBtn.string = if (isPlaying) { "Stop" } { "Play" };
+	playBtn.background = if (isPlaying) { Color(0.85, 0.35, 0.35) } { Color(0.35, 0.75, 0.40) };
+};
+
+var onSynthEnd = {
+	// called when the synth ends for any reason (server-side free, CmdPeriod, etc.)
+	{ synth = nil; isPlaying = false; updatePlayBtn.value }.defer;
+};
 
 var startSynth = {
+	if (synth.notNil) { synth.free; synth = nil };
 	synth = {
 		var rate = \rate.kr(1.0);
 		RubberBand.ar(1, ~buf.bufnum, rate).dup;
 	}.play;
+	// watch for the synth node ending (e.g. doneAction, server kill)
+	NodeWatcher.register(synth);
+	synth.onFree({ onSynthEnd.value });
+	isPlaying = true;
+	updatePlayBtn.value;
+};
+
+var stopSynth = {
+	if (synth.notNil) { synth.free; synth = nil };
+	isPlaying = false;
+	updatePlayBtn.value;
+};
+
+var togglePlay = {
+	if (isPlaying) { stopSynth.value } { startSynth.value; updateRate.value };
 };
 
 var updateRate = {
@@ -75,9 +102,8 @@ var updateRate = {
 };
 
 var loadFile = { |path|
-	var oldSynth = synth;
-	synth = nil;
-	if (oldSynth.notNil) { oldSynth.free };
+	var wasPlaying = isPlaying;
+	stopSynth.value;
 
 	Buffer.read(s, path, action: { |newBuf|
 		{
@@ -85,8 +111,7 @@ var loadFile = { |path|
 			~buf = newBuf;
 			~path = path;
 			dropArea.string = "  " ++ path.basename;
-			startSynth.value;
-			updateRate.value;
+			if (wasPlaying) { startSynth.value; updateRate.value };
 			"Loaded: %".format(path.basename).postln;
 		}.defer;
 	});
@@ -94,7 +119,7 @@ var loadFile = { |path|
 
 // --- Build the window ---
 
-win = Window("RubberBand Beatmatch", Rect(200, 200, 480, 160), resizable: false);
+win = Window("RubberBand Beatmatch", Rect(200, 200, 480, 190), resizable: false);
 
 win.layout = VLayout(
 	// Drop zone
@@ -137,20 +162,25 @@ win.layout = VLayout(
 		slider = Slider().orientation_(\horizontal)
 			.value_(0.5) // center = original BPM
 			.action_({ |sl|
-				var minBPM = originalBPM * 0.5;
-				var maxBPM = originalBPM * 1.5;
+				var minBPM = originalBPM * 0.1;
+				var maxBPM = originalBPM * 3.0;
 				currentTargetBPM = sl.value.linlin(0, 1, minBPM, maxBPM).round(0.1);
 				bpmReadout.string = currentTargetBPM.asString;
 				updateRate.value;
 			})
-	)
+	),
+
+	// Play / Stop button
+	playBtn = Button()
+		.minHeight_(36)
+		.font_(Font.default.size_(14).bold)
+		.action_({ togglePlay.value })
 );
 
-// Start playback
-startSynth.value;
+updatePlayBtn.value;
 
 win.onClose = {
-	if (synth.notNil) { synth.free; synth = nil };
+	stopSynth.value;
 };
 
 win.front;
