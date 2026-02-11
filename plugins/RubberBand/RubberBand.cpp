@@ -8,42 +8,58 @@ using namespace RubberBand;
 
 static InterfaceTable *ft;
 
+// Input indices (after bufnum which is read by GET_BUF at index 0)
+enum {
+    kBufNum = 0,    // bufnum — read by GET_BUF
+    kRate,          // playback speed (1.0 = normal)
+    kPitchShift,    // pitch scale (1.0 = no shift, 2.0 = octave up)
+    kTrig,          // positive transition resets playhead to startPos
+    kStartPos,      // start position in frames (reset target for trig)
+    kLoop,          // loop mode (0 = off, 1 = on)
+    kDoneAction,    // done action when buffer playback finishes (non-loop)
+    kFormant        // formant preservation (0 = shifted, 1 = preserved)
+};
+
 struct RubberBandUGen : public SCUnit {
 public:
     RubberBandUGen() {
-        Print("new RubberBandUGen\n");
-
         numChannels = (int)numOutputs();
+
+        // Read initial values for construction
+        double rate = std::max((double)in(kRate)[0], minSpeedRatio);
+        double pitchScale = clampPitch((double)in(kPitchShift)[0]);
+        int formant = (int)in(kFormant)[0];
+
+        // Build constructor options.
+        // OptionPitchHighConsistency supports time-varying pitch without
+        // discontinuities — correct choice for a modulatable UGen.
+        int options =
+            RubberBandStretcher::OptionProcessRealTime |
+            RubberBandStretcher::OptionThreadingNever |
+            RubberBandStretcher::OptionPitchHighConsistency;
+
+        if (formant)
+            options |= RubberBandStretcher::OptionFormantPreserved;
 
         rubberband = new RubberBandStretcher(
             sampleRate(),
             numChannels,
-            RubberBandStretcher::OptionProcessRealTime |
-            RubberBandStretcher::OptionThreadingNever
+            options
         );
 
-        // Set initial time ratio before querying start pad/delay
-        double rate = std::max((double)in(1)[0], minSpeedRatio);
         rubberband->setTimeRatio(1.0 / rate);
+        rubberband->setPitchScale(pitchScale);
 
         setupBuffers();
+        if (allocFailed) return;
 
-        // Prime the stretcher with silence to handle start delay.
-        // Feed in chunks of maxProcessSize to stay within the API contract.
-        size_t startPad = rubberband->getPreferredStartPad();
-        if (startPad > 0) {
-            // Reuse stretchInBuf (already zeroed) as silent input
-            size_t remaining = startPad;
-            while (remaining > 0) {
-                size_t chunk = std::min(remaining, (size_t)maxProcessSize);
-                rubberband->process((const float *const *)stretchInBuf, chunk, false);
-                remaining -= chunk;
-            }
-        }
+        primeStretcher();
 
-        startDelay = rubberband->getStartDelay();
+        playheadPos = (int)in(kStartPos)[0];
+        prevTrig = in(kTrig)[0];
+        prevFormant = formant;
+        playbackDone = false;
         samplesOutput = 0;
-        playheadPos = 0;
 
         set_calc_function<RubberBandUGen, &RubberBandUGen::next>();
         next(1);
@@ -69,70 +85,150 @@ public:
     }
 
 private:
-    // The GET_BUF macro fills in these two:
+    // Required by GET_BUF macro
     float m_fbufnum;
     SndBuf *m_buf;
 
-    // state variables
+    // Constants
     const int maxProcessSize = 512;
     const double minSpeedRatio = 0.000001;
+    const double minPitchScale = 0.0625;  // ~4 octaves down
+    const double maxPitchScale = 16.0;    // ~4 octaves up
 
+    // State
     RubberBandStretcher *rubberband = NULL;
     int numChannels;
     int playheadPos;
     size_t startDelay;
     size_t samplesOutput;
+    float prevTrig;
+    int prevFormant;
+    bool playbackDone;
+    bool allocFailed = false;
 
     // Per-channel buffer arrays for RubberBandStretcher
     float **stretchInBuf = NULL;
     float **stretchOutBuf = NULL;
 
+    // Clamp pitch scale to safe range
+    double clampPitch(double p) const {
+        return std::max(minPitchScale, std::min(maxPitchScale, p));
+    }
 
-    // calc function
+    // Feed silence into the stretcher to satisfy the preferred start pad,
+    // then record the start delay so we can skip those initial samples.
+    void primeStretcher() {
+        size_t startPad = rubberband->getPreferredStartPad();
+        if (startPad > 0) {
+            // Ensure input buffers are zeroed for silent priming
+            for (int ch = 0; ch < numChannels; ch++) {
+                memset(stretchInBuf[ch], 0, maxProcessSize * sizeof(float));
+            }
+            size_t remaining = startPad;
+            while (remaining > 0) {
+                size_t chunk = std::min(remaining, (size_t)maxProcessSize);
+                rubberband->process((const float *const *)stretchInBuf, chunk, false);
+                remaining -= chunk;
+            }
+        }
+        startDelay = rubberband->getStartDelay();
+    }
+
+    // ---------- calc function ----------
     void next(int inNumSamples) {
-        // Alias `this` as `unit` for GET_BUF macro compatibility
-        RubberBandUGen * unit = this;
+        // Alias for GET_BUF macro compatibility
+        RubberBandUGen *unit = this;
 
-        double rate = 1.0 / std::max((double)in(1)[0], minSpeedRatio);
+        // Read control inputs (first sample of each)
+        double rate    = std::max((double)in(kRate)[0], minSpeedRatio);
+        double pitch   = clampPitch((double)in(kPitchShift)[0]);
+        float  trigVal = in(kTrig)[0];
+        int    startP  = (int)in(kStartPos)[0];
+        int    loop    = (int)in(kLoop)[0];
+        int    doneAct = (int)in(kDoneAction)[0];
+        int    formant = (int)in(kFormant)[0];
 
         GET_BUF
 
-        rubberband->setTimeRatio(rate);
+        // --- Handle trigger: positive transition resets playback ---
+        if (trigVal > 0.f && prevTrig <= 0.f) {
+            // Clamp startPos into buffer range
+            playheadPos = std::max(0, std::min(startP, (int)bufFrames - 1));
+            playbackDone = false;
+            samplesOutput = 0;
+            rubberband->reset();
+            primeStretcher();
+        }
+        prevTrig = trigVal;
 
-        // Feed input using getSamplesRequired() pull pattern
+        // --- Update formant option at runtime if it changed ---
+        if (formant != prevFormant) {
+            rubberband->setFormantOption(
+                formant
+                    ? RubberBandStretcher::OptionFormantPreserved
+                    : RubberBandStretcher::OptionFormantShifted
+            );
+            prevFormant = formant;
+        }
+
+        // --- Set time ratio and pitch scale ---
+        rubberband->setTimeRatio(1.0 / rate);
+        rubberband->setPitchScale(pitch);
+
+        // --- Feed input using getSamplesRequired() pull pattern ---
         while (rubberband->available() < (int)inNumSamples + (int)startDelay) {
 
             if (playheadPos >= (int)bufFrames) {
-                break;
+                if (loop) {
+                    playheadPos = 0;
+                } else {
+                    break;
+                }
             }
 
             size_t needed = rubberband->getSamplesRequired();
             if (needed == 0) break;
 
-            // Clamp to maxProcessSize (our buffer allocation limit)
             int toProcess = (int)std::min(needed, (size_t)maxProcessSize);
 
-            // De-interleave from the SndBuf into per-channel input buffers
+            // De-interleave from the SndBuf into per-channel input buffers,
+            // handling loop wrap-around and channel count mismatch.
             for (int ch = 0; ch < numChannels; ch++) {
-                int i;
-                for (i = 0; i < toProcess && (playheadPos + i) < (int)bufFrames; i++) {
-                    stretchInBuf[ch][i] = bufData[(playheadPos + i) * bufChannels + ch];
-                }
-                // Zero-fill remainder if we hit the end of the buffer
-                for (; i < toProcess; i++) {
-                    stretchInBuf[ch][i] = 0.f;
+                for (int i = 0; i < toProcess; i++) {
+                    int pos = playheadPos + i;
+
+                    // Wrap around if looping
+                    if (pos >= (int)bufFrames) {
+                        if (loop) {
+                            pos = pos % (int)bufFrames;
+                        } else {
+                            stretchInBuf[ch][i] = 0.f;
+                            continue;
+                        }
+                    }
+
+                    // Safe channel read — zero-fill if UGen has more
+                    // channels than the buffer
+                    if (ch < (int)bufChannels) {
+                        stretchInBuf[ch][i] = bufData[pos * bufChannels + ch];
+                    } else {
+                        stretchInBuf[ch][i] = 0.f;
+                    }
                 }
             }
 
             rubberband->process((const float *const *)stretchInBuf, toProcess, false);
+
+            // Advance playhead, wrap if looping
             playheadPos += toProcess;
+            if (loop && playheadPos >= (int)bufFrames) {
+                playheadPos = playheadPos % (int)bufFrames;
+            }
         }
 
-        // Retrieve output -- skip startDelay samples at the beginning
+        // --- Retrieve output: skip startDelay samples first ---
         int avail = rubberband->available();
 
-        // If we still need to skip delay samples, do so first.
-        // Clamp to maxProcessSize since that's our buffer allocation.
         while (startDelay > 0 && avail > 0) {
             size_t toSkip = std::min({(size_t)avail, startDelay, (size_t)maxProcessSize});
             rubberband->retrieve(stretchOutBuf, toSkip);
@@ -140,7 +236,7 @@ private:
             avail = rubberband->available();
         }
 
-        // Now retrieve the actual output
+        // Retrieve actual output
         size_t toRetrieve = std::min(avail > 0 ? (size_t)avail : (size_t)0, (size_t)inNumSamples);
         size_t samplesRetrieved = 0;
         if (toRetrieve > 0) {
@@ -158,10 +254,18 @@ private:
                 output[i] = 0.f;
             }
         }
+
+        // --- Done action: fire once when playback ends (non-looping) ---
+        if (!loop && !playbackDone && playheadPos >= (int)bufFrames && avail <= 0) {
+            playbackDone = true;
+            if (doneAct > 0) {
+                DoneAction(doneAct, this);
+            }
+        }
     }
 
+    // ---------- buffer allocation ----------
     void setupBuffers() {
-        // Allocate per-channel input buffers
         stretchInBuf = (float **)RTAlloc(mWorld, numChannels * sizeof(float *));
         stretchOutBuf = (float **)RTAlloc(mWorld, numChannels * sizeof(float *));
 
@@ -169,6 +273,10 @@ private:
             failAlloc();
             return;
         }
+
+        // Zero the pointer arrays so the destructor is safe if we fail partway
+        memset(stretchInBuf, 0, numChannels * sizeof(float *));
+        memset(stretchOutBuf, 0, numChannels * sizeof(float *));
 
         for (int ch = 0; ch < numChannels; ch++) {
             stretchInBuf[ch] = (float *)RTAlloc(mWorld, maxProcessSize * sizeof(float));
@@ -187,6 +295,7 @@ private:
     }
 
     void failAlloc() {
+        allocFailed = true;
         RubberBandUGen *unit = this;
         SETCALC(ft->fClearUnitOutputs);
         ClearUnitOutputs(this, 1);

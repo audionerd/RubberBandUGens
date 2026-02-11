@@ -1,6 +1,6 @@
 # RubberBand UGens for SuperCollider
 
-RubberBand is a high-quality C++ library for pitch-shifting and time-stretching audio. This plugin wraps it as a SuperCollider UGen for real-time time-stretching of buffer contents.
+RubberBand is a high-quality C++ library for pitch-shifting and time-stretching audio. This plugin wraps it as a SuperCollider UGen for real-time time-stretching and pitch-shifting of buffer contents.
 
 ### Building
 
@@ -20,17 +20,33 @@ Copy the resulting `RubberBand.scx` and `RubberBand.sc` to your SuperCollider ex
     b = Buffer.read(s, Platform.resourceDir +/+ "sounds/a11wlk01-44_1.aiff");
 
     // Play at quarter speed — pitch is preserved
-    {
-      RubberBand.ar(
-        numChannels: 1,
-        bufnum: b,
-        rate: 0.25
-      ).dup;
-    }.play;
+    { RubberBand.ar(1, b, rate: 0.25).dup }.play;
+
+    // Pitch up an octave at normal speed
+    { RubberBand.ar(1, b, pitchShift: 2.0).dup }.play;
+
+    // Loop with doneAction
+    { RubberBand.ar(1, b, rate: 0.5, loop: 1, doneAction: 2).dup }.play;
 
     b.free;
 
-A more complete example with an interactive BPM slider and drag-and-drop file loading is included in `RubberBand.scd`.
+A more complete example with an interactive GUI (speed slider, pitch slider, loop toggle, formant control, and drag-and-drop file loading) is included in `RubberBand.scd`.
+
+### Parameters
+
+    RubberBand.ar(numChannels, bufnum, rate, pitchShift, trig, startPos, loop, doneAction, formant)
+
+| Parameter      | Default | Description |
+|----------------|---------|-------------|
+| `numChannels`  | —       | Number of output channels. |
+| `bufnum`       | `0`     | Buffer to play. |
+| `rate`         | `1.0`   | Playback speed. `0.5` = half speed (2x longer), `2.0` = double speed. Pitch is preserved. |
+| `pitchShift`   | `1.0`   | Pitch scale factor. `2.0` = octave up, `0.5` = octave down. Independent of speed. |
+| `trig`         | `1`     | A positive transition (0 → 1) resets the playhead to `startPos`. Defaults to 1 so playback starts immediately. |
+| `startPos`     | `0`     | Start position in frames. Used as the reset target when a trigger fires. |
+| `loop`         | `0`     | Loop mode. `0` = play once, `1` = loop continuously. |
+| `doneAction`   | `0`     | Action when playback finishes (non-looping only). `0` = do nothing, `2` = free the synth. Same codes as `PlayBuf`. |
+| `formant`      | `0`     | Formant preservation. `0` = formants shift with pitch, `1` = preserve formants (better for voice/vocals). Can be changed at runtime. |
 
 ### Reference
 
