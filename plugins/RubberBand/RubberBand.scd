@@ -5,9 +5,8 @@
 
 // ---- Section 1: Setup and Configuration ----
 
-// Change these two variables to match your own audio file:
+// Change this to your own audio file:
 ~path = Platform.resourceDir +/+ "sounds/a11wlk01-44_1.aiff";
-~originalBPM = 120;  // set this to the source file's tempo
 
 // Or pick a file interactively:
 // Dialog.openPanel({ |path| ~path = path });
@@ -53,57 +52,28 @@ s.waitForBoot {
 { RubberBand.ar(1, ~buf, rate: 0.5).dup * 0.5 }.play;
 
 
-// ---- Section 4: Interactive GUI with BPM Slider and File Drop ----
-// Evaluate this block to open the beatmatch control window.
+// ---- Section 4: Interactive GUI with Speed Slider and File Drop ----
+// Evaluate this block to open the control window.
 
 (
-var win, dropArea, bpmLabel, srcBpmBox, slider, bpmReadout, playBtn, synth;
-var originalBPM = ~originalBPM ? 120;
-var currentTargetBPM = originalBPM;
-var isPlaying = false;
-
-var updatePlayBtn = {
-	playBtn.string = if (isPlaying) { "Stop" } { "Play" };
-	playBtn.background = if (isPlaying) { Color(0.85, 0.35, 0.35) } { Color(0.35, 0.75, 0.40) };
-};
-
-var onSynthEnd = {
-	// called when the synth ends for any reason (server-side free, CmdPeriod, etc.)
-	{ synth = nil; isPlaying = false; updatePlayBtn.value }.defer;
-};
+var win, dropArea, slider, speedReadout, playBtn, synth;
+var currentRate = 1.0;
 
 var startSynth = {
 	if (synth.notNil) { synth.free; synth = nil };
 	synth = {
-		var rate = \rate.kr(1.0);
-		RubberBand.ar(1, ~buf.bufnum, rate).dup;
+		RubberBand.ar(1, ~buf.bufnum, \rate.kr(currentRate)).dup;
 	}.play;
-	// watch for the synth node ending (e.g. doneAction, server kill)
-	NodeWatcher.register(synth);
-	synth.onFree({ onSynthEnd.value });
-	isPlaying = true;
-	updatePlayBtn.value;
-};
-
-var stopSynth = {
-	if (synth.notNil) { synth.free; synth = nil };
-	isPlaying = false;
-	updatePlayBtn.value;
-};
-
-var togglePlay = {
-	if (isPlaying) { stopSynth.value } { startSynth.value; updateRate.value };
 };
 
 var updateRate = {
 	if (synth.notNil) {
-		synth.set(\rate, currentTargetBPM / originalBPM);
+		synth.set(\rate, currentRate);
 	};
 };
 
 var loadFile = { |path|
-	var wasPlaying = isPlaying;
-	stopSynth.value;
+	if (synth.notNil) { synth.free; synth = nil };
 
 	Buffer.read(s, path, action: { |newBuf|
 		{
@@ -111,7 +81,7 @@ var loadFile = { |path|
 			~buf = newBuf;
 			~path = path;
 			dropArea.string = "  " ++ path.basename;
-			if (wasPlaying) { startSynth.value; updateRate.value };
+			startSynth.value;
 			"Loaded: %".format(path.basename).postln;
 		}.defer;
 	});
@@ -119,7 +89,7 @@ var loadFile = { |path|
 
 // --- Build the window ---
 
-win = Window("RubberBand Beatmatch", Rect(200, 200, 480, 190), resizable: false);
+win = Window("RubberBand Time Stretch", Rect(200, 200, 480, 160), resizable: false);
 
 win.layout = VLayout(
 	// Drop zone
@@ -135,52 +105,32 @@ win.layout = VLayout(
 			loadFile.value(View.currentDrag);
 		}),
 
-	// Source BPM
+	// Speed slider (1% to 300%)
 	HLayout(
-		bpmLabel = StaticText().string_("Source BPM:").fixedWidth_(80),
-		srcBpmBox = NumberBox()
-			.value_(originalBPM)
-			.clipLo_(20).clipHi_(300)
-			.step_(1).scroll_step_(1)
-			.fixedWidth_(60)
-			.action_({ |nb|
-				originalBPM = nb.value;
-				~originalBPM = originalBPM;
-				// keep current target BPM, just recalc the rate
-				updateRate.value;
-			}),
-		nil // stretch
-	),
-
-	// Target BPM slider
-	HLayout(
-		StaticText().string_("Target BPM:").fixedWidth_(80),
-		bpmReadout = StaticText()
-			.string_(currentTargetBPM.round(0.1).asString)
+		StaticText().string_("Speed:").fixedWidth_(50),
+		speedReadout = StaticText()
+			.string_("100%")
 			.fixedWidth_(50)
 			.align_(\right),
 		slider = Slider().orientation_(\horizontal)
-			.value_(0.5) // center = original BPM
+			.value_(0.33) // 100% at startup (1.0 mapped from 1%–300%)
 			.action_({ |sl|
-				var minBPM = originalBPM * 0.1;
-				var maxBPM = originalBPM * 3.0;
-				currentTargetBPM = sl.value.linlin(0, 1, minBPM, maxBPM).round(0.1);
-				bpmReadout.string = currentTargetBPM.asString;
+				currentRate = sl.value.linexp(0, 1, 0.001, 3.0);
+				speedReadout.string = (currentRate * 100).round(1).asInteger.asString ++ "%";
 				updateRate.value;
 			})
 	),
 
-	// Play / Stop button
+	// Play button — frees any existing synth and starts fresh
 	playBtn = Button()
+		.states_([["Play", Color.white, Color(0.35, 0.65, 0.40)]])
 		.minHeight_(36)
 		.font_(Font.default.size_(14).bold)
-		.action_({ togglePlay.value })
+		.action_({ startSynth.value })
 );
 
-updatePlayBtn.value;
-
 win.onClose = {
-	stopSynth.value;
+	if (synth.notNil) { synth.free; synth = nil };
 };
 
 win.front;
