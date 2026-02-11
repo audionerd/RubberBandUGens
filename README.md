@@ -2,7 +2,11 @@
 
 RubberBand is a high-quality C++ library for pitch-shifting and time-stretching audio. This plugin wraps it as a SuperCollider UGen for real-time time-stretching and pitch-shifting of buffer contents.
 
-### Building
+### Installation
+
+Prebuilt binaries for macOS (universal), Linux, and Windows are available on the [Releases](https://github.com/audionerd/RubberBandUGens/releases) page. Download the zip for your platform, unzip it, and copy the `RubberBand` folder into your SuperCollider Extensions directory, then recompile the class library.
+
+### Building from Source
 
 Requires a SuperCollider source tree for the plugin headers. The build will try to find it automatically (local `supercollider/` checkout, then common system install paths). You can also set it explicitly:
 

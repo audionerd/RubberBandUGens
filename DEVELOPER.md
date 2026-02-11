@@ -47,3 +47,12 @@ Then recompile the class library in SuperCollider (Cmd+Shift+L or relaunch).
 ## Clean rebuild
 
     rm -rf build && mkdir build && cd build && cmake .. && make -j4
+
+## Releasing
+
+Pushing a version tag triggers GitHub Actions to build for macOS (universal binary), Linux, and Windows, and attach the zips to a GitHub Release.
+
+    git tag v1.0
+    git push --tags
+
+Monitor progress in the [Actions](https://github.com/audionerd/RubberBandUGens/actions) tab. When complete, the release will appear on the [Releases](https://github.com/audionerd/RubberBandUGens/releases) page with per-platform downloads.
