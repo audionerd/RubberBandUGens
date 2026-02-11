@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cstring>
 
 #include "SC_PlugIn.hpp"
 #include <rubberband/RubberBandStretcher.h>
@@ -11,8 +12,6 @@ struct RubberBandUGen : public SCUnit {
 public:
     RubberBandUGen() {
         Print("new RubberBandUGen\n");
-
-        RubberBandStretcher::setDefaultDebugLevel(3);
 
         rubberband = new RubberBandStretcher(
             // playback sample rate
@@ -27,7 +26,7 @@ public:
             // RubberBandStretcher::OptionChannelsTogether
         );
 
-        rubberband->setMaxProcessSize(bufferSize());
+        rubberband->setMaxProcessSize(maxProcessSize);
 
         setupBuffers();
 
@@ -115,11 +114,16 @@ private:
         // feed more input samples into rubberband
         while (rubberband->available() < inNumSamples) {
 
+            // If we've read past the end of the buffer, stop feeding
+            if (playheadPos >= (int)bufFrames) {
+                break;
+            }
+
             // de-interleave into the rubberband input buffers
             int i, j;
             int channels = 1;
-            for (i = 0, j = (playheadPos + i) * channels;
-                   i < maxProcessSize && j < bufSamples;
+            for (i = 0, j = playheadPos * channels;
+                   i < maxProcessSize && j < (int)bufSamples;
                    i++, j += channels) {
                stretchInBufL[i] = bufData[j];
                // stretchInBufR[i] = inputSamples[j + 1];
@@ -135,12 +139,19 @@ private:
             playheadPos += maxProcessSize;
         }
 
-        size_t samplesRetrieved = rubberband->retrieve(&stretchOutBufL, inNumSamples);
+        int avail = rubberband->available();
+        size_t toRetrieve = std::min(avail > 0 ? (size_t)avail : 0, (size_t)inNumSamples);
+        size_t samplesRetrieved = 0;
+        if (toRetrieve > 0) {
+            samplesRetrieved = rubberband->retrieve(&stretchOutBufL, toRetrieve);
+        }
 
-        // interleave output from rubberband into audio output
-        for (int i = 0; i < inNumSamples; i++) {
+        // copy output from rubberband into audio output, zero-fill remainder
+        for (size_t i = 0; i < samplesRetrieved; i++) {
             output[i] = stretchOutBufL[i];
-            // output[i * channels + 1] = stretchOutBufR[i];
+        }
+        for (size_t i = samplesRetrieved; i < (size_t)inNumSamples; i++) {
+            output[i] = 0.f;
         }
     }
 
