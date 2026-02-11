@@ -137,7 +137,27 @@ win.front;
 )
 
 
-// ---- Section 5: Cleanup ----
+// ---- Section 5: Envelope-Controlled Speed Ramps ----
+// Pitch stays locked while playback speed changes over time.
+// The default sound file is ~2.4 s, so keep ramps short
+// and don't start too fast or the buffer runs out early.
+
+// Linear ramp: normal speed → near-frozen over 4 seconds
+{ RubberBand.ar(1, ~buf, Line.kr(1.0, 0.1, 4)).dup }.play;
+
+// Exponential ramp — most of the slowdown happens up front
+{ RubberBand.ar(1, ~buf, XLine.kr(1.0, 0.1, 4)).dup }.play;
+
+// Custom curve: abrupt half-speed drop, then a long crawl
+(
+{
+	var rate = EnvGen.kr(Env([1.0, 0.3, 0.05], [1.5, 4], \exp));
+	RubberBand.ar(1, ~buf, rate).dup;
+}.play;
+)
+
+
+// ---- Section 6: Cleanup ----
 
 s.freeAll;
 ~buf.free;
