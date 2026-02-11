@@ -88,7 +88,10 @@ if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
 endif()
 
 install(TARGETS RubberBand LIBRARY DESTINATION "RubberBand")
-install(FILES plugins/RubberBand/RubberBand.sc DESTINATION "RubberBand/Classes")
+install(FILES
+    plugins/RubberBand/RubberBand.sc
+    plugins/RubberBand/RubberBandLoop.sc
+    DESTINATION "RubberBand/Classes")
 if(SUPERNOVA)
     install(TARGETS RubberBand_supernova LIBRARY DESTINATION "RubberBand")
 endif()

@@ -33,10 +33,11 @@ If SuperCollider source is not in `./supercollider/`, pass it explicitly:
 
 ## Install
 
-Copy the built plugin and SC class file to the Extensions folder:
+Copy the built plugin and SC class files to the Extensions folder:
 
     cp build/RubberBand.scx ~/Library/Application\ Support/SuperCollider/Extensions/
     cp plugins/RubberBand/RubberBand.sc ~/Library/Application\ Support/SuperCollider/Extensions/
+    cp plugins/RubberBand/RubberBandLoop.sc ~/Library/Application\ Support/SuperCollider/Extensions/
 
 Then recompile the class library in SuperCollider (Cmd+Shift+L or relaunch).
 

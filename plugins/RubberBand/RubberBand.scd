@@ -393,7 +393,118 @@ win.front;
 { RubberBand.ar(1, ~buf, XLine.kr(0.1, 1.0, 1.5), doneAction: 2).dup }.play;
 
 
-// ---- Section 13: Cleanup ----
+// ---- Section 13: BPM-synced loop GUI ----
+// RubberBandLoop: original BPM, target BPM (40–200), metronome, drop zone.
+// Load a loop (e.g. a drum loop), set its original BPM, then play at a new BPM
+// with optional click. Requires RubberBandLoop.sc to be in your class library.
+// If click/loop phase feels slightly off, try:
+// loopPlayer.metronomeOffset = 0.03;  // or 0.06, etc., then press Stop and Play again
+
+(
+var win, dropArea, origBPMBox, targetSlider, targetReadout;
+var metronomeToggle, playBtn, stopBtn;
+var loopPlayer, bpmBuf, bpmPath;
+var targetBPM = 120, originalBPM = 120;
+// Default browse folder: same as this SCD file, or last-loaded file's folder
+var scdDir = thisProcess.nowExecutingPath.notNil.if(
+	PathName(thisProcess.nowExecutingPath).pathOnly, nil);
+
+var loadBPMFile = { |path|
+	Buffer.read(s, path, action: { |buf|
+		{
+			if (bpmBuf.notNil) { bpmBuf.free };
+			bpmBuf = buf;
+			bpmPath = path;
+			dropArea.string = "  " ++ path.basename;
+			"Loaded: %".format(path.basename).postln;
+		}.defer;
+	});
+};
+
+s.waitForBoot {
+	// Open window immediately so it's visible even if SynthDef load is slow or fails
+	win = Window("BPM-synced loop", Rect(220, 220, 420, 220), resizable: false);
+	win.layout = VLayout(
+		HLayout(
+			StaticText().string_("Drop loop file:").fixedWidth_(90),
+			dropArea = DragSink()
+				.string_("  Drop an audio file here")
+				.align_(\left)
+				.minHeight_(28)
+				.background_(Color.grey(0.88))
+				.canReceiveDragHandler_({ View.currentDrag.isString and: { PathName(View.currentDrag).isFile } })
+				.receiveDragHandler_({ |v| loadBPMFile.value(View.currentDrag) }),
+			Button().states_([["Browse...", Color.black, Color.grey(0.85)]])
+				.fixedWidth_(70)
+				.action_({
+					var startDir = if (bpmPath.notNil) { PathName(bpmPath).pathOnly } { scdDir };
+					Dialog.openPanel({ |path| loadBPMFile.value(path) }, nil, false, startDir);
+				})
+		),
+		HLayout(
+			StaticText().string_("Original BPM:").fixedWidth_(90),
+			origBPMBox = NumberBox().value_(120).clipLo_(1).clipHi_(300).fixedWidth_(60)
+				.action_({ |nb| originalBPM = nb.value })
+		),
+		HLayout(
+			StaticText().string_("Target BPM:").fixedWidth_(90),
+			targetReadout = StaticText().string_("120").fixedWidth_(40).align_(\right),
+			targetSlider = Slider().orientation_(\horizontal).value_((120 - 40) / 160)
+				.maxHeight_(24)
+				.action_({ |sl|
+					targetBPM = sl.value.linlin(0, 1, 40, 200).round(1);
+					targetReadout.string = targetBPM.asString;
+					if (loopPlayer.notNil) { loopPlayer.targetBPM_(targetBPM) };
+				})
+		),
+		HLayout(
+			metronomeToggle = Button()
+				.states_([
+					["Metronome: OFF", Color.black, Color.grey(0.8)],
+					["Metronome: ON",  Color.white, Color(0.35, 0.55, 0.75)]
+				])
+				.action_({ |btn|
+					if (loopPlayer.isNil) { "Load a file and press Play first.".postln; ^nil };
+					if (btn.value == 1) { loopPlayer.startMetronome } { loopPlayer.stopMetronome };
+				}),
+			playBtn = Button()
+				.states_([["Play", Color.white, Color(0.35, 0.65, 0.40)]])
+				.minHeight_(32)
+				.action_({
+					if (bpmBuf.isNil) { "Load a loop file first.".postln; ^nil };
+					// Stop previous player to avoid orphaned synths
+					if (loopPlayer.notNil) { loopPlayer.stop };
+					loopPlayer = RubberBandLoop.new(bpmBuf, origBPMBox.value, nil);
+					loopPlayer.play(targetBPM, metronome: metronomeToggle.value == 1);
+				}),
+			stopBtn = Button()
+				.states_([["Stop", Color.white, Color(0.65, 0.30, 0.30)]])
+				.minHeight_(32)
+				.action_({
+					if (loopPlayer.notNil) { loopPlayer.stop; loopPlayer = nil };
+				})
+		)
+	);
+	win.onClose = {
+		if (loopPlayer.notNil) { loopPlayer.stop; loopPlayer = nil };
+	};
+	win.front;
+
+	// Pre-load SynthDefs (chained so both are on the server before "ready" prints)
+	SynthDef(\rbLoop_player, { |bufnum, rate = 1|
+		var sig = RubberBand.ar(1, bufnum, rate: rate, loop: 1);
+		Out.ar(0, sig.dup);
+	}).load(s, {
+		SynthDef(\rbLoop_metronome, { |freq = 1000, amp = 0.3|
+			var sig = SinOsc.ar(freq) * EnvGen.ar(Env.perc(0.001, 0.05), doneAction: 2);
+			Out.ar(0, sig ! 2 * amp);
+		}).load(s, { "BPM GUI: ready.".postln });
+	});
+};
+)
+
+
+// ---- Section 14: Cleanup ----
 
 s.freeAll;
 ~buf.free;
