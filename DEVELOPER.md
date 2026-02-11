@@ -49,6 +49,32 @@ Then recompile the class library in SuperCollider (Cmd+Shift+L or relaunch).
 
     rm -rf build && mkdir build && cd build && cmake .. && make -j4
 
+## UGen Input Mapping
+
+The RubberBand UGen reads its parameters from a fixed set of inputs. Parameters marked **ctor** are read once at construction and baked into the stretcher options. Parameters marked **RT** can be changed every control block.
+
+| Index | Name           | Default | Timing   | Notes |
+|-------|----------------|---------|----------|-------|
+| 0     | `bufnum`       | 0       | ctor     | Read by SC's `GET_BUF` macro |
+| 1     | `rate`         | 1.0     | RT       | Playback speed (positive) |
+| 2     | `pitchShift`   | 1.0     | RT       | Pitch scale factor |
+| 3     | `trig`         | 1       | RT       | Positive transition resets playhead |
+| 4     | `startPos`     | 0       | RT       | Reset target (frames) |
+| 5     | `loop`         | 0       | RT       | 0 = off, 1 = on |
+| 6     | `doneAction`   | 0       | RT       | Fires when non-looping playback ends |
+| 7     | `formant`      | 0       | RT       | 0 = shifted, 1 = preserved |
+| 8     | `transients`   | 0       | RT (R2)  | 0 = crisp, 1 = mixed, 2 = smooth |
+| 9     | `detector`     | 0       | RT (R2)  | 0 = compound, 1 = percussive, 2 = soft |
+| 10    | `phase`        | 0       | RT (R2)  | 0 = laminar, 1 = independent |
+| 11    | `pitchMode`    | 0       | RT (R2) / ctor (R3) | 0 = highSpeed, 1 = highQuality, 2 = highConsistency |
+| 12    | `engine`       | 0       | ctor     | 0 = Faster/R2, 1 = Finer/R3 |
+| 13    | `window`       | 0       | ctor     | 0 = standard, 1 = short, 2 = long |
+| 14    | `channelMode`  | 0       | ctor     | 0 = apart, 1 = together |
+
+**R2-only runtime setters** (`setTransientsOption`, `setDetectorOption`, `setPhaseOption`, `setPitchOption`) are called only when `getEngineVersion() == 2`. On the R3 engine these options are either unsupported or construction-only; changing them at runtime would be a no-op or undefined. Each setter is guarded by a `prev*` member variable so the API is only called when the value actually changes.
+
+**Construction-only inputs** (`engine`, `window`, `channelMode`, and `pitchMode` on R3) are read once in the constructor and included in the `Options` bitmask passed to `RubberBandStretcher`. Changing them after construction has no effect.
+
 ## Releasing
 
 Pushing a version tag triggers GitHub Actions to build for macOS (universal binary), Linux, and Windows, and attach the zips to a GitHub Release.

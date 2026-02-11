@@ -38,7 +38,8 @@ A more complete example with an interactive GUI (speed slider, pitch slider, loo
 
 ### Parameters
 
-    RubberBand.ar(numChannels, bufnum, rate, pitchShift, trig, startPos, loop, doneAction, formant)
+    RubberBand.ar(numChannels, bufnum, rate, pitchShift, trig, startPos, loop, doneAction, formant,
+        transients, detector, phase, pitchMode, engine, window, channelMode)
 
 | Parameter      | Default | Description |
 |----------------|---------|-------------|
@@ -50,7 +51,14 @@ A more complete example with an interactive GUI (speed slider, pitch slider, loo
 | `startPos`     | `0`     | Start position in frames. Used as the reset target when a trigger fires. |
 | `loop`         | `0`     | Loop mode. `0` = play once, `1` = loop continuously. |
 | `doneAction`   | `0`     | Action when playback finishes (non-looping only). `0` = do nothing, `2` = free the synth. Same codes as `PlayBuf`. |
-| `formant`      | `0`     | Formant preservation. `0` = formants shift with pitch, `1` = preserve formants (better for voice/vocals). Can be changed at runtime. |
+| `formant`      | `0`     | Formant preservation. `0` = formants shift with pitch, `1` = preserve formants (better for voice/vocals). Runtime-switchable. |
+| `transients`   | `0`     | Transient handling (R2 only). `0` = crisp, `1` = mixed, `2` = smooth. Runtime-switchable. |
+| `detector`     | `0`     | Transient detector type (R2 only). `0` = compound, `1` = percussive, `2` = soft. Runtime-switchable. |
+| `phase`        | `0`     | Phase adjustment (R2 only). `0` = laminar, `1` = independent. Runtime-switchable. |
+| `pitchMode`    | `0`     | Pitch algorithm. `0` = high speed, `1` = high quality, `2` = high consistency. R2: runtime-switchable. R3: construction-only. |
+| `engine`       | `0`     | Rubber Band engine. `0` = Faster (R2), `1` = Finer (R3). Construction-only. |
+| `window`       | `0`     | FFT window size. `0` = standard, `1` = short, `2` = long. Construction-only. |
+| `channelMode`  | `0`     | Channel processing. `0` = apart (independent), `1` = together (linked). Construction-only. |
 
 ### Reference
 

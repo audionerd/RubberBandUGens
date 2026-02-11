@@ -13,6 +13,13 @@
 //   loop         — loop mode (0 = off, 1 = on)
 //   doneAction   — action when playback ends (0 = none, 2 = free synth)
 //   formant      — formant preservation (0 = off, 1 = on; best for vocals)
+//   transients   — transient mode: 0=crisp, 1=mixed, 2=smooth (R2 only, RT)
+//   detector     — detector mode: 0=compound, 1=percussive, 2=soft (R2 only, RT)
+//   phase        — phase mode: 0=laminar, 1=independent (R2 only, RT)
+//   pitchMode    — pitch mode: 0=highSpeed, 1=highQuality, 2=highConsistency (R2 RT, R3 ctor)
+//   engine       — engine: 0=Faster/R2, 1=Finer/R3 (constructor only)
+//   window       — window size: 0=standard, 1=short, 2=long (constructor only)
+//   channelMode  — channel handling: 0=apart, 1=together (constructor only)
 //
 // Cmd+. (Cmd-period) stops all running synths.
 
@@ -504,7 +511,78 @@ s.waitForBoot {
 )
 
 
-// ---- Section 14: Cleanup ----
+// ---- Section 14: Engine Comparison (R2 vs R3) ----
+// engine: 0 = Faster (R2), 1 = Finer (R3)
+// R2 is lower-latency; R3 is higher-quality (especially for pitch shifting).
+// Both play the same buffer at half speed so you can A/B the quality.
+
+// R2 (Faster engine) — half speed
+{ RubberBand.ar(1, ~buf, rate: 0.5, engine: 0).dup }.play;
+
+// R3 (Finer engine) — half speed
+{ RubberBand.ar(1, ~buf, rate: 0.5, engine: 1).dup }.play;
+
+// R2 — octave up
+{ RubberBand.ar(1, ~buf, pitchShift: 2.0, engine: 0).dup }.play;
+
+// R3 — octave up (listen for cleaner transients & fewer artifacts)
+{ RubberBand.ar(1, ~buf, pitchShift: 2.0, engine: 1).dup }.play;
+
+// R2 — extreme slow (10% speed)
+{ RubberBand.ar(1, ~buf, rate: 0.1, engine: 0).dup }.play;
+
+// R3 — extreme slow (10% speed, generally smoother)
+{ RubberBand.ar(1, ~buf, rate: 0.1, engine: 1).dup }.play;
+
+// Side-by-side: R2 left ear, R3 right ear (half speed)
+(
+{
+	var r2 = RubberBand.ar(1, ~buf, rate: 0.5, engine: 0);
+	var r3 = RubberBand.ar(1, ~buf, rate: 0.5, engine: 1);
+	[r2, r3];
+}.play;
+)
+
+
+// ---- Section 15: Transient Modes ----
+// transients: 0 = Crisp, 1 = Mixed, 2 = Smooth  (R2 engine only)
+// Best heard on percussive material (drums, plucked strings).
+// Crisp preserves attacks; Smooth smears them for pad-like textures.
+
+// Crisp (default) — sharp transients preserved
+{ RubberBand.ar(1, ~buf, rate: 0.5, transients: 0, engine: 0).dup }.play;
+
+// Mixed — softer attacks, some transient detail
+{ RubberBand.ar(1, ~buf, rate: 0.5, transients: 1, engine: 0).dup }.play;
+
+// Smooth — smeared transients, ambient/pad texture
+{ RubberBand.ar(1, ~buf, rate: 0.5, transients: 2, engine: 0).dup }.play;
+
+// Loop with mouse-switchable transient mode (X axis: 0→Crisp, 1→Mixed, 2→Smooth)
+(
+{
+	var mode = MouseX.kr(0, 2).round;
+	RubberBand.ar(1, ~buf,
+		rate: 0.5,
+		loop: 1,
+		transients: mode,
+		engine: 0
+	).dup;
+}.play;
+)
+
+// Detector comparison (R2 only): Compound / Percussive / Soft
+// Affects how the stretcher identifies transients.
+// detector: 0 = Compound, 1 = Percussive, 2 = Soft
+
+// Percussive detector — emphasises drum hits
+{ RubberBand.ar(1, ~buf, rate: 0.5, detector: 1, engine: 0).dup }.play;
+
+// Soft detector — treats most content as tonal
+{ RubberBand.ar(1, ~buf, rate: 0.5, detector: 2, engine: 0).dup }.play;
+
+
+// ---- Section 16: Cleanup ----
 
 s.freeAll;
 ~buf.free;
