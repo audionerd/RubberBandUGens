@@ -532,9 +532,9 @@ var curFormant = 0, curTransients = 0, curDetector = 0, curPhase = 0, curPitchMo
 var scdDir = thisProcess.nowExecutingPath.notNil.if(
 	PathName(thisProcess.nowExecutingPath).pathOnly, nil);
 
-// Rebuild \rbLoop_player SynthDef with current ctor-only values as defaults,
-// then call completionFunc when it's ready on the server.
-var loadPlayerDef = { |completionFunc|
+// Rebuild \rbLoop_player SynthDef with current ctor-only values baked in.
+// Uses .add (updates SynthDescLib immediately, sends to server via /d_recv).
+var rebuildPlayerDef = {
 	var eng = curEngine, wnd = curWindow, chm = curChannelMode;
 	SynthDef(\rbLoop_player, { |bufnum, rate = 1, formant = 0,
 		transients = 0, detector = 0, phase = 0, pitchMode = 0|
@@ -543,7 +543,7 @@ var loadPlayerDef = { |completionFunc|
 			phase: phase, pitchMode: pitchMode,
 			engine: eng, window: wnd, channelMode: chm);
 		Out.ar(0, sig.dup);
-	}).load(s, completionFunc);
+	}).add;
 };
 
 var setRTOptions = {
@@ -674,15 +674,18 @@ s.waitForBoot {
 				.action_({
 					if (bpmBuf.isNil) { "Load a loop file first.".postln; ^nil };
 					if (loopPlayer.notNil) { loopPlayer.stop };
-					// Rebuild SynthDef with current ctor-only values, then start
-					loadPlayerDef.value({
+					// Rebuild SynthDef with current ctor-only values, wait for server, start
+					fork {
+						rebuildPlayerDef.value;
+						s.sync;
 						{
 							loopPlayer = RubberBandLoop.new(bpmBuf, origBPMBox.value, nil);
 							loopPlayer.play(targetBPM, metronome: metronomeToggle.value == 1);
-							// Apply current RT options to the new synth
-							setRTOptions.value;
 						}.defer;
-					});
+						// Small delay so RubberBandLoop's Routine creates the synth
+						0.1.wait;
+						{ setRTOptions.value }.defer;
+					};
 				}),
 			stopBtn = Button()
 				.states_([["Stop", Color.white, Color(0.65, 0.30, 0.30)]])
@@ -697,13 +700,13 @@ s.waitForBoot {
 	};
 	win.front;
 
-	// Pre-load SynthDefs (chained so both are on the server before "ready" prints)
-	loadPlayerDef.value({
-		SynthDef(\rbLoop_metronome, { |freq = 1000, amp = 0.3|
-			var sig = SinOsc.ar(freq) * EnvGen.ar(Env.perc(0.001, 0.05), doneAction: 2);
-			Out.ar(0, sig ! 2 * amp);
-		}).load(s, { "BPM GUI: ready.".postln });
-	});
+	// Pre-load SynthDefs
+	rebuildPlayerDef.value;
+	SynthDef(\rbLoop_metronome, { |freq = 1000, amp = 0.3|
+		var sig = SinOsc.ar(freq) * EnvGen.ar(Env.perc(0.001, 0.05), doneAction: 2);
+		Out.ar(0, sig ! 2 * amp);
+	}).add;
+	"BPM GUI: ready.".postln;
 };
 )
 
